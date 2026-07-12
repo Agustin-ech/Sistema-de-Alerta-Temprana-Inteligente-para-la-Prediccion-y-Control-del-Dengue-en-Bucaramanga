@@ -1,0 +1,27 @@
+# Entornos virtuales
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Editor / SO
+.DS_Store
+.vscode/
+.directory
+
+# Archivos temporales de LibreOffice/Excel al tener el archivo abierto
+.~lock.*#
+
+# Empaquetado antiguo, ya no se usa (el pipeline vive en training/)
+training.zip
+
+# Datasets pesados (~1.5 GB combinados) — no caben en GitHub.
+# Se descargan aparte, ver instrucciones en README.md
+data/
+datos_extraidos/
+consolidado_enfermedades_bucaramanga.xlsx

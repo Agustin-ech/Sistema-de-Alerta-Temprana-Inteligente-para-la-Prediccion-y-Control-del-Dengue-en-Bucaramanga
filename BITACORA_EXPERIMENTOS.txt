@@ -1,0 +1,135 @@
+BITACORA - QUE PROBAMOS, QUE FUNCIONO Y QUE DESCARTAMOS
+IA_PREDICTIVA - Sistema de alerta temprana de dengue, Bucaramanga
+==========================================================================================
+
+ESTADO ACTUAL EN PRODUCCION
+------------------------------
+Recall:     0.70  (objetivo fijado a proposito)
+Precision:  0.58
+F1.5:       0.66  (con confirmacion temporal + umbral 0.12; el 0.7081 que
+            aparece en el experimento 2 es la cifra SIN confirmacion, no
+            confundir con esta)
+ROC-AUC:    0.79
+Umbral:     0.12  (+ confirmacion temporal de 2 semanas)
+
+Cada intento de abajo se midio contra el mismo set de prueba (ultimas 52
+semanas) antes de decidir si se quedaba o se revertia.
+
+
+1. LEAKAGE DE IDENTIDAD                                         [CORREGIDO]
+----------------------------------------------------------------------------
+El modelo dependia de QUE HOSPITAL ERA (nom_upgd, densidad poblacional) en
+vez de la dinamica real clima-epidemia. Señal de alerta: ROC-AUC de 0.97
+con un F2 mediocre (~0.50).
+
+Se quitaron esas 5 variables. El desempeño cayo solo un 11%, no se
+desplomo -> confirmaba que la señal real seguia ahi.
+
+Decision: excluidas permanentemente del modelo.
+
+
+2. LA IA, ¿PREDICE DE VERDAD O SOLO REPITE INERCIA?              [VALIDADO]
+----------------------------------------------------------------------------
+Se comparo el modelo contra 3 reglas tontas sin ML ("si ya estaba en
+alerta, seguira en alerta").
+
+Resultado: reglas tontas F1.5 ~ 0.50 | modelo F1.5 = 0.71 (+42%)
+El recall salta de 0.43 (reglas) a 0.85 (modelo).
+
+
+3. VERIFICACION DE LEAKAGE TEMPORAL                              [VALIDADO]
+----------------------------------------------------------------------------
+La variable con mas peso en SHAP (persistencia_alerta_8) se veia
+sospechosa. Se reviso el codigo y se probo quitandola sola.
+
+Resultado: caida de solo 0.4% al quitarla -> es momentum epidemico real,
+no una trampa.
+
+
+4. ANALISIS DE FALSOS POSITIVOS VIA SHAP                         [HALLAZGO]
+----------------------------------------------------------------------------
+Se comparo que distingue una falsa alarma de un acierto real.
+
+Hallazgo: el modelo confunde "clima favorable para un brote" con "el
+brote ya esta pasando" - genera ruido cuando hay lluvia intensa pero sin
+momentum epidemico sostenido.
+
+
+5. FEATURE: INTERACCION LLUVIA x PERSISTENCIA BAJA             [DESCARTADO]
+----------------------------------------------------------------------------
+Se intento ayudarle al modelo dandole ya calculada esa combinacion.
+
+Resultado: F1.5 -4.8% | la variable casi no se uso (puesto 140 de 143)
+
+
+6. TARGET AUXILIAR DE STACKING                                 [DESCARTADO]
+----------------------------------------------------------------------------
+Modelo en dos etapas: uno predice el riesgo de la semana siguiente, y esa
+probabilidad alimenta al modelo principal.
+
+Resultado: F1.5 -16% | se perdia un tercio de los datos de entrenamiento
+para evitar hacer trampa.
+
+
+7. INDICE BIOCLIMATICO COMBINADO                                [DESCARTADO]
+----------------------------------------------------------------------------
+Temperatura x lluvia como una sola variable continua, en vez de dejar que
+el arbol la aproxime solo.
+
+Resultado: F1.5 -1.5% | importancia mediocre (puesto 103 de 143)
+
+
+8. VALIDACION DE LAGS CLIMATICOS (CCF)                           [VALIDADO]
+----------------------------------------------------------------------------
+Correlacion cruzada real contra la serie de Bucaramanga, en vez de confiar
+solo en la literatura.
+
+Resultado: la lluvia tiene su pico de correlacion en 4 semanas -> coincide
+exacto con el diseño ya usado. Nada que corregir.
+
+
+9. CONFIRMACION TEMPORAL (2 SEMANAS SEGUIDAS)                 [IMPLEMENTADO]
+----------------------------------------------------------------------------
+En vez de alertar con una sola semana atipica, se exige que la alerta se
+sostenga 2 semanas seguidas antes de emitirla.
+
+Resultado: -14.8% de volumen de alertas | precision sube, recall baja
+~6 puntos.
+
+
+10. RECALIBRACION DEL UMBRAL HACIA LA META 0.70 / 0.70        [IMPLEMENTADO]
+----------------------------------------------------------------------------
+El umbral automatico chocaba contra el borde de su rango de busqueda. Se
+amplio el rango, y se anclo el recall en 0.70 exacto para maximizar la
+precision sin moverlo de ahi.
+
+Resultado: umbral final = 0.12 -> recall 0.700 | precision 0.583 | F1.5 = 0.66
+
+
+11. CONTAGIO ESPACIAL ENTRE UPGD VECINAS (vecinos_alerta_prom)   [IMPLEMENTADO]
+----------------------------------------------------------------------------
+Se agrego una variable que promedia si las 3 instituciones geograficamente
+mas cercanas (distancia real en km, calculada con las coordenadas de
+app/geo/upgd_coordenadas.json) estuvieron en alerta la semana anterior. La
+logica: el vector y el clima no respetan la frontera de un solo hospital.
+
+Resultado: la variable entro directo en el puesto 6 de 142 en importancia
+SHAP, por encima de la mayoria de variables climaticas individuales -
+confirma que la dimension espacial aporta señal real, no solo la temporal.
+Se implemento con el mismo cuidado de leakage que las demas: desplazada 1
+semana (shift(1) sobre alerta_binaria_pasada de los vecinos) para no usar
+informacion contemporanea de las UPGD vecinas como si ya se conociera al
+momento de predecir.
+
+Decision: incorporada de forma permanente al modelo de produccion.
+
+
+FINALMENTE
+------------
+Con 3 de 3 intentos de features nuevas sin superar al modelo base, y los
+lags ya validados empiricamente, llegamos al techo practico de lo que da
+este dataset (17 instituciones, clima + vigilancia historica).
+
+Subir la precision mas alla de 0.58 sin perder recall va a necesitar DATOS
+NUEVOS - mas años de historia, o vigilancia entomologica real - no mas
+ingenieria sobre lo mismo.

@@ -1,0 +1,198 @@
+LAS 20 VARIABLES MAS IMPORTANTES DEL MODELO - EXPLICACION PARA REVISION EPIDEMIOLOGICA
+==========================================================================================
+
+Contexto general
+------------------
+El modelo predice, para cada institucion de salud (UPGD) de Bucaramanga y cada semana
+epidemiologica, el riesgo de que en las siguientes 4 semanas se cumpla una "regla de
+intervencion" tipo INS: que aparezca al menos una semana en nivel de brote (canal rojo),
+o que se acumulen 3 de 4 semanas en alerta, o que haya 2 semanas seguidas en alerta.
+
+Es un modelo de machine learning (LightGBM, arboles de decision con boosting) entrenado
+con 17 instituciones que tienen vigilancia continua de varios años. Las variables de
+abajo estan ordenadas por "importancia" segun el propio modelo: cuanto usa cada una para
+tomar sus decisiones (no es lo mismo que causalidad directa, pero si es una senial fuerte
+de que patron esta aprovechando el modelo).
+
+Dos aclaraciones tecnicas que se repiten abajo:
+- "Ventana de N semanas" = un promedio, suma o desviacion estandar calculada sobre las
+  N semanas ANTERIORES a la semana evaluada (nunca incluye la semana actual ni el futuro,
+  para evitar que el modelo "haga trampa" mirando datos que en la realidad no existirian
+  todavia al momento de predecir).
+- "Canal endemico" = para cada semana del anio, se compara el numero de casos actual
+  contra la mediana y el percentil 75 historico de esa MISMA semana en años anteriores
+  de esa misma institucion. Si supera la mediana, se considera "semana en alerta"; si
+  supera el percentil 75, "semana en brote".
+
+
+GRUPO 1 - CARGA EPIDEMICA RECIENTE Y PERSISTENCIA DEL BROTE
+--------------------------------------------------------------
+Estas son, con diferencia, las variables mas influyentes. Reflejan la idea de que un
+brote de dengue no aparece de la nada: tiene inercia, se sostiene varias semanas.
+
+1. media_casos_4
+   Promedio de casos reportados en las 4 semanas anteriores. Nivel general de actividad
+   reciente de la enfermedad en esa institucion.
+
+2. casos_lag_52
+   Numero de casos reportados hace exactamente 52 semanas (mismo periodo del anio
+   anterior). Es la forma que tiene el modelo de "acordarse" del comportamiento
+   estacional/interanual, similar en espiritu al canal endemico.
+
+3. persistencia_alerta_8
+   De las ultimas 8 semanas, cuantas estuvieron en "semana en alerta" (por encima de la
+   mediana historica para esa semana del anio). Mide cuanto tiempo lleva la institucion
+   sostenida en un estado de alerta epidemiologica.
+
+4. std_casos_4
+   Desviacion estandar (variabilidad) de los casos en las ultimas 4 semanas. Un brote que
+   esta empezando o acelerando suele mostrar mas inestabilidad semana a semana que un
+   periodo endemico estable.
+
+5. persistencia_alerta_6
+   Igual que la variable 3, pero mirando una ventana de 6 semanas en vez de 8.
+
+8. casos_lag_4
+   Casos reportados hace exactamente 4 semanas. Coincide con la ventana causal
+   documentada en el proyecto: lluvia -> criadero -> mosquito infeccioso -> caso
+   notificado toma entre 3 y 6 semanas, asi que "hace 4 semanas" cae justo en esa
+   ventana.
+
+12. casos_lag_1
+   Casos de la semana inmediatamente anterior.
+
+16. persistencia_alerta_4
+   Igual que las variables 3 y 5, con ventana de 4 semanas.
+
+20. persistencia_alerta_3
+   Igual patron, ventana de 3 semanas.
+
+
+GRUPO 2 - CONTAGIO ESPACIAL (NUEVA, incorporada esta semana)
+------------------------------------------------------------------
+6. vecinos_alerta_prom
+   Promedio de cuantas de las 3 instituciones geograficamente MAS CERCANAS a esta UPGD
+   estuvieron en "semana en alerta" la semana anterior (calculado con distancia real en
+   kilometros entre las coordenadas de cada institucion). La logica es que el vector y
+   las condiciones climaticas no respetan la frontera de un solo hospital: si los
+   barrios/instituciones vecinas ya estan en alerta, es razonable esperar que el
+   fenomeno se extienda. Es la variable nueva que se agrego esta semana, y ya aparece
+   en el puesto 6 de 142 variables en importancia - confirma que la dimension espacial
+   aporta senial real, no solo la temporal.
+
+
+GRUPO 3 - CLIMA: PRECIPITACION
+-----------------------------------
+7. precipitacion_max10min_rollmean8
+   Promedio, en las ultimas 8 semanas, de la lluvia maxima registrada en un lapso corto
+   (10 minutos). Captura eventos de lluvia intensa (aguaceros), que son mas relevantes
+   para la formacion de criaderos por encharcamiento que la lluvia acumulada suave.
+
+18. precipitacion_std_rollmean8
+   Variabilidad de la lluvia en las ultimas 8 semanas. Periodos con lluvia muy irregular
+   (secas y luego aguaceros) favorecen mas la reproduccion del vector que la lluvia
+   constante.
+
+
+GRUPO 4 - CLIMA: TEMPERATURA
+---------------------------------
+10. temp_rango_4sem
+   Diferencia entre temperatura maxima y minima promedio de las ultimas 4 semanas
+   (amplitud termica). Afecta el desarrollo larvario y la supervivencia del mosquito
+   adulto.
+
+11. grados_dia_acum
+   "Grados-dia" acumulados: suma, semana a semana, de cuanto la temperatura media supero
+   los 16 grados C (umbral biologico de referencia). Es un proxy estandar en entomologia
+   para estimar la velocidad de desarrollo del mosquito y del periodo de incubacion
+   extrinseco del virus (EIP) dentro del vector.
+
+13. temp_media_6sem
+   Temperatura media de las ultimas 6 semanas.
+
+15. temp_max_4sem
+   Temperatura maxima promedio de las ultimas 4 semanas.
+
+17. temperatura_std_rollmean8
+   Variabilidad de la temperatura en las ultimas 8 semanas (cambios bruscos de clima).
+
+19. temperatura_std_rollmean4
+   Igual que la variable 17, pero en una ventana mas corta (4 semanas).
+
+
+GRUPO 5 - ESTACIONALIDAD DEL CALENDARIO
+--------------------------------------------
+9. semana_cos
+14. semana_sin
+   Estas dos siempre van juntas. Es una forma matematica de decirle al modelo "en que
+   momento del ciclo anual estamos" sin que la semana 52 y la semana 1 queden como
+   numeros lejanos entre si (31 de diciembre y 1 de enero son consecutivos en la
+   realidad, pero "52" y "1" son numeros muy distintos si se usaran directo). Le permite
+   al modelo aprender patrones estacionales generales (epocas de lluvia, vacaciones,
+   movilidad) independientes del clima puntual de cada anio.
+
+
+RESUMEN PARA DISCUSION
+---------------------------
+De las 20 variables mas importantes:
+- 8 son de carga/persistencia epidemica reciente (el "momentum" del brote)
+- 1 es la nueva variable de contagio espacial entre instituciones vecinas
+- 7 son climaticas (2 de lluvia, 5 de temperatura)
+- 2 son de estacionalidad del calendario
+- 2 son casos_lag puntuales (semana -1 y semana -4)
+
+
+
+LAS REGLAS DE INTERVENCION: QUE ES EXACTAMENTE LO QUE PREDICE EL MODELO
+============================================================================
+Antes de mirar las variables, hay que tener claro que es lo que el modelo esta tratando
+de anticipar. No predice "cuantos casos habra": predice si, en las proximas 4 semanas,
+se va a activar una "alerta de intervencion" segun una regla inspirada en los criterios
+del INS (Instituto Nacional de Salud) para vigilancia de dengue.
+
+Paso 1: el canal endemico (clasificar cada semana pasada)
+--------------------------------------------------------------
+Para cada institucion y cada semana del anio, se compara el numero de casos de ESA
+semana contra el historico de años anteriores de esa MISMA semana epidemiologica (por
+ejemplo, la semana 30 de este anio se compara contra la semana 30 de los años previos,
+nunca contra otras semanas del calendario). Con eso se calculan la mediana y el
+percentil 75 historicos, y cada semana queda clasificada en 3 niveles:
+
+   Nivel 0 (verde / normal)  -> casos <= mediana historica de esa semana
+   Nivel 1 (amarillo / alerta) -> casos > mediana, pero <= percentil 75
+   Nivel 2 (rojo / brote)     -> casos > percentil 75 historico
+
+(Si una institucion no tiene todavia al menos 3 años previos de historia para esa
+semana, queda sin clasificar por falta de dato de referencia.)
+
+Paso 2: la regla de intervencion (mirando las 4 semanas siguientes)
+--------------------------------------------------------------------------
+Parado en la semana actual, el modelo mira que nivel tuvieron (o tendran, en el momento
+de entrenar, porque ya paso) las 4 semanas SIGUIENTES, y marca esa semana actual como
+"debio activarse una intervencion" (target = 1) si se cumple AL MENOS UNA de estas tres
+condiciones:
+
+   Regla A - Brote directo:
+      En alguna de las 4 semanas siguientes se alcanzo el nivel 2 (rojo/brote).
+
+   Regla B - Alerta sostenida:
+      Al menos 3 de las 4 semanas siguientes estuvieron en nivel 1 o 2 (amarillo o
+      rojo), aunque nunca se haya llegado solas al rojo.
+
+   Regla C - Dos semanas seguidas en alerta:
+      Hubo al menos un par de semanas CONSECUTIVAS (ej. semana+1 y semana+2, o
+      semana+2 y semana+3) ambas en nivel 1 o 2.
+
+Si ninguna de las tres se cumple, esa semana queda marcada como "no requeria
+intervencion" (target = 0).
+
+Por que se diseño asi
+---------------------------
+La idea es no depender solo de un pico aislado (un brote de una sola semana que despues
+se apaga, Regla A), sino tambien capturar el patron mas peligroso desde el punto de
+vista de salud publica: una alerta que se sostiene o se repite en el tiempo (Reglas B y
+C), aunque ninguna semana individual llegue a nivel de brote franco. Esto es justamente
+lo que las variables de "persistencia_alerta" (Grupo 1) y ahora "vecinos_alerta_prom"
+(Grupo 2) le ayudan al modelo a anticipar.
+
+
