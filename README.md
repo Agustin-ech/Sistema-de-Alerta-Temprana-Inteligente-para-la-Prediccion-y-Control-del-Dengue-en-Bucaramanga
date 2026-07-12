@@ -103,9 +103,9 @@ práctica versionar datasets pesados junto al código).
 
 Para conseguirlos:
 
-1. Descargá el .zip desde este enlace de Google Drive:
+1. Descarga el .zip desde este enlace de Google Drive:
    **https://drive.google.com/file/d/1v5vAxgcQS33plxfy4hNa3ri5h-Dt2SFh/view?usp=sharing**
-2. Descomprimilo en la raíz del proyecto (la misma carpeta donde está este
+2. Descomprimelo en la raíz del proyecto (la misma carpeta donde está este
    README), de forma que quede:
 
    ```
